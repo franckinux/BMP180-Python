@@ -3,14 +3,13 @@
 # Made by: MrTijn/Tijndagamer
 # Copyright 2015
 
-import smbus
+import pigpio
 import math
 from time import sleep
 
+
 class BMP180:
     # Global variables
-    address = None
-    bus = smbus.SMBus(1)
     mode = 1 # TODO: Add a way to change the mode
 
     # BMP180 registers
@@ -43,10 +42,10 @@ class BMP180:
     calMC = 0
     calMD = 0
 
+    def __init__(self, bus, address):
+        self.pi = pigpio.pi()
+        self.bus = self.pi.i2c_open(bus, address)
 
-    def __init__(self, address):
-        self.address = address
-        
         # Get the calibration data from the BMP180
         self.read_calibration_data()
 
@@ -58,8 +57,8 @@ class BMP180:
         register -- the register to read from.
         Returns the read value.
         """
-        high = self.bus.read_byte_data(self.address, register)
-        low = self.bus.read_byte_data(self.address, register + 1)
+        high = self.pi.i2c_read_byte_data(self.bus, register)
+        low = self.pi.i2c_read_byte_data(self.bus, register + 1)
 
         if high > 127:
             high -= 256
@@ -68,8 +67,8 @@ class BMP180:
 
     # Reads a 16-bit unsigned value from the given register and returns it
     def read_unsigned_16_bit(self, register):
-        high = self.bus.read_byte_data(self.address, register)
-        low = self.bus.read_byte_data(self.address, register + 1)
+        high = self.pi.i2c_read_byte_data(self.bus, register)
+        low = self.pi.i2c_read_byte_data(self.bus, register + 1)
 
         return (high << 8) + low
 
@@ -92,7 +91,7 @@ class BMP180:
     def get_raw_temp(self):
         """Reads and returns the raw temperature data."""
         # Write 0x2E to CONTROL_REG to start the measurement
-        self.bus.write_byte_data(self.address, self.CONTROL_REG, 0x2E)
+        self.pi.i2c_write_byte_data(self.bus, self.CONTROL_REG, 0x2E)
 
         # Wait 4,5 ms
         sleep(0.0045)
@@ -106,16 +105,16 @@ class BMP180:
     def get_raw_pressure(self):
         """Reads and returns the raw pressure data."""
         # Write 0x43 + (self.mode << 6) to the CONTROL_REG, to start the measurement
-        self.bus.write_byte_data(self.address, self.CONTROL_REG, 0x34 + (self.mode << 6))
+        self.pi.i2c_write_byte_data(self.bus, self.CONTROL_REG, 0x34 + (self.mode << 6))
 
         # Sleep for 8 ms.
         # TODO: Way to use the correct wait time for the current mode
         sleep(0.008)
 
         # Read the raw data from the DATA_REG, 0xF6
-        MSB = self.bus.read_byte_data(self.address, self.DATA_REG)
-        LSB = self.bus.read_byte_data(self.address, self.DATA_REG + 1)
-        XLSB = self.bus.read_byte_data(self.address, self.DATA_REG + 2)
+        MSB = self.pi.i2c_read_byte_data(self.bus, self.DATA_REG)
+        LSB = self.pi.i2c_read_byte_data(self.bus, self.DATA_REG + 1)
+        XLSB = self.pi.i2c_read_byte_data(self.bus, self.DATA_REG + 2)
 
         raw_data = ((MSB << 16) + (LSB << 8) + XLSB) >> (8 - self.mode)
 
@@ -205,8 +204,13 @@ class BMP180:
 
         return altitude
 
+    def close(self):
+        self.pi.i2c_close(self.bus)
+        self.pi.stop()
+
 if __name__ == "__main__":
-    bmp = BMP180(0x77)
+    bmp = BMP180(1, 0x77)
     print(bmp.get_temp())
     print(bmp.get_pressure())
     print(bmp.get_altitude())
+    bmp.close()
